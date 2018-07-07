@@ -1,0 +1,334 @@
+#!/bin/bash
+
+#####################################################################################
+#Author: Chris Dubbs
+#Program Name: matrix
+#Class: CS 344
+#Date: January 17, 2018
+#Program Description: Performs basic matrix operations, including dimensions, 
+#	transpose, mean vector calculation, addition, and multiplication.
+####################################################################################
+
+
+#Setup cleanup for circumstance of unexpected error
+trap "rm -f tempfile*; exit 1" INT HUP TERM 
+
+
+####################################################################################
+#Name: calcDims
+#Description: This function prints "ROWS COLS" (space separated) for a 
+#	given matrix. 
+####################################################################################
+calcDims() {
+	tmpinput=./tempfileinput
+	dimtmp1=./tempfileResult
+	#check for absence of parameter, if so, use stdin
+	if [ -z "$1" ]
+	then
+		cat > "$tmpinput$$"		
+	#ensure only one argument passed
+	elif [ $# -ne 1 ] || [ ! -r "$1" ]
+	then             #if so, send output to stderr and exit
+		echo "Incorrect number of arguments or unreadable file." 1>&2 
+		exit 1
+	else #use provided file
+		cp $1 $tmpinput$$
+	fi
+
+	#calculate the number of rows
+	rows=`cat "$tmpinput$$" | wc -l`         #cut matrix row count and save
+	#calculate the number of columns by using head to get the number of columns and
+	#modifying the row into a column to produce an accurate count
+	cols=`head -1 "$tmpinput$$" |  tr '\t' '\n' | wc -l`
+	#convert \n chars to spaces
+	echo $rows $cols > $dimtmp1$$ 
+	#output results
+	cat $dimtmp1$$	
+
+	#cleanup
+	rm -f $tmpinput$$ $dimtmp1$$
+}
+
+
+####################################################################################
+#Name: matrixTrans
+#Description: This function prints of the transpose of a given matrix, in a valid 
+#	matrix format.  
+####################################################################################
+matrixTrans() {
+
+	tmpinput=./tempfileInput
+	transposed=./tempfileTrans
+
+	#check for absence of parameter, if so, use stdin
+	if [ -z "$1" ]
+	then
+		cat > "$tmpinput$$"		
+	#ensure only one argument passed and that it is a readable file
+	elif [ $# -ne 1 ] || [ ! -r "$1" ]
+	then             #if so, send output to stderr and exit
+		echo "Incorrect number of arguments or file unreadable." 1>&2 
+		exit 1
+	else #use provided file
+		cp $1 $tmpinput$$
+	fi
+	
+	#determine number of columns
+	colNum=`head -1 "$tmpinput$$" | tr '\t' '\n' | wc -l`
+	
+ 	
+	#use paste -s to replace the newline character of every line except the
+	#last line with a tab character. Uses the number of columns determined above
+	#to control the break, since a transposed matrix has a number of rows equal to
+	#the number of columns of the input matrix. The output is saved to a temporary
+	#file for subsequent printing
+	i=1
+	while [ $i -le $colNum ] 
+	do
+		cut -f $i $tmpinput$$ | paste -s >> $transposed$$
+		((i++))
+	done
+
+	#output the result file
+	cat $transposed$$
+	
+	#cleanup
+	rm -f $tmpinput$$ $transposed$$
+}
+
+####################################################################################
+#Name: calcMeanVect
+#Description: This function prints a row vector mean of the the input matrix.
+####################################################################################
+calcMeanVect() {
+	tmpinput=./tempfileIn
+	trans=./tempfileTrans
+	meanCol=./tempfilecol
+	meanRes=./tempfileMean
+	#check for absence of parameter, if so, use stdin
+	if [ -z "$1" ]
+	then
+		cat > $tmpinput$$		
+	#ensure only one argument passed and that it is a readable file
+	elif [ $# -ne 1 ] || [ ! -r "$1" ]
+	then             #if so, send output to stderr and exit
+		echo "Incorrect number of arguments or file unreadable." 1>&2	
+	exit 1
+	else #use provided file
+		cp $1 $tmpinput$$
+	fi
+
+	#Calculate mean values line by line
+	#use tranposed matrix as input in order to work line by line	
+	while read myline
+	do
+		denom=0		#reset denominator
+		sum=0		#reset sum 
+		mean=0              #reset mean each time
+		for num in $myline    #take into account each number per line
+		do
+			sum=$(( $sum + $num )) 
+			((denom++))
+		done
+		#caluclate mean via provided rounding equation
+		mean=$(( ($sum + ($denom/2)*( ($sum>0)*2-1)) / $denom )) 
+		echo $mean >> $meanCol$$
+	done <<< "$(matrixTrans $tmpinput$$)" #use trasnposed matrix as input
+	
+	#convert column file to row file, using head to avoid an additional \t at the end
+	head -c -1 $meanCol$$ | tr  '\n' '\t'>  $meanRes$$
+	#add a newline character
+	echo >> $meanRes$$
+
+	#print results
+	cat $meanRes$$
+
+	#cleanup
+	rm -f $trans$$ $meanCol$$ $meanRes$$ $meanResOut$$ $tmpinput$$
+}
+
+
+####################################################################################
+#Name: addMatrices
+#Description: This function prints the sum of the two given matrices. 
+####################################################################################
+addMatrices() {
+	
+	#verify two readable files for input
+	if [ $# -ne 2 ] || [ ! -r "$1" ] || [ ! -r "$2" ]
+	then		
+		echo "Incorrect number of arguments or file unreadable." 1>&2 
+		exit 1
+	fi
+
+	#save matrix dimensions for utility usage
+	rowsM1=`cat "$1" | wc -l`       
+	rowsM2=`cat "$2" | wc -l`         
+	colsM1=`head -1 "$1" |  tr '\t' '\n' | wc -l`
+	colsM2=`head -1 "$2" |  tr '\t' '\n' | wc -l`
+
+	#Ensure matrices have the same dimensions
+	if [ $rowsM1 -ne $rowsM2 ] || [ $colsM1 -ne $colsM2 ]
+	then
+		echo "Matrices must have the same dimensions." 1>&2 
+		exit 1
+	else
+		#load files into arrays for easier value specification
+		arrM1=( `cat "$1" `)
+		arrM2=( `cat "$2" `)
+		#calculate total array size (both will be the same)
+		elemCount=${#arrM1[@]}	
+		
+		#sum corresponding elements from each array
+		i=0     #tracks the current element from each matrix array
+		#Sum each corresponding element one by one
+		while [ $i -lt $elemCount ]
+		do
+			#calculate sum of next 2 corresponding elements
+			sum=$(( ${arrM1[i]} + ${arrM2[i]} ))
+			#Output sum 
+			echo -n $sum
+			
+			#Determine whether to output tab or newline character
+			if [ $(( ($i + 1)  % $colsM1  )) -ne 0 ]
+			then
+				echo -ne '\t'
+			else
+				echo
+			fi
+			(( i++ ))
+		done
+	fi
+}
+
+
+####################################################################################
+#Name: multMatrices
+#Description: This function prints the product of the two given matrices. The first
+#	arugument is treated as the left matrix, and the second argument is teated
+#	as the right matrix. 
+####################################################################################
+multMatrices() {
+
+	#verify two readable files for input
+	if [ $# -ne 2 ] || [ ! -r "$1" ] || [ ! -r "$2" ]
+	then
+		echo "Incorrect number of arguments or file unreadable." 1>&2 
+		exit 1
+	fi
+
+	#calculate dimensions for various utility usage
+	rowsM1=`cat "$1" | wc -l`       
+	rowsM2=`cat "$2" | wc -l`        
+	colsM1=`head -1 "$1" |  tr '\t' '\n' | wc -l`
+	colsM2=`head -1 "$2" |  tr '\t' '\n' | wc -l`
+	
+	#verify matrices are compatible for multiplication (cols M1 = rows M2)
+	if [ $colsM1 -ne $rowsM2 ]
+	then
+		echo "Matrices are incompatible for multiplication." 1>&2
+		exit 1
+	fi
+
+	#create matrix arrays
+	arrM1=( `cat "$1" `)
+	#transpose M2, to make processing simpler (allows row by row processing)
+	arrM2T=( `cat <<< $(matrixTrans $2) `)
+	
+	arrM1idx=0  #tracks the index of M1 array
+	arrM2Tidx=0  #tracks the index of M2T array
+	
+	m1curRow=1 #used to simulate 2D array dimensions, using 1D arrays
+	m1curCol=1 #used to simulate 2D array dimensions, using 1D arrays
+
+	#process all rows of M1
+	while [ $m1curRow -le $rowsM1 ] 
+	do
+		#for each row of m1 mult each term by corresponding element
+		#in simulated column (given M2 transposed) in M2T 
+		while [ $arrM2Tidx -lt ${#arrM2T[@]} ]
+		do
+			#reset sum
+			sum=0
+			#Caluculates next term for output matrix
+			while [ $m1curCol -le $colsM1 ]
+			do	
+				#reset product
+				prod=0
+				#calc product of next two terms
+				prod=$(( ${arrM1[$arrM1idx]} * ${arrM2T[$arrM2Tidx]} ))
+				#add product to output term sum
+				sum=$( expr $sum + $prod )
+		
+				
+				#increment arrM1 index
+				(( arrM1idx++ ))
+				#increment arrM2T index
+				(( arrM2Tidx++ ))
+				#increment hypothetical column of M1
+				(( m1curCol++ ))		
+			done
+			#output next term in product matrix
+			echo -n  $sum
+
+			#determine whether to add tab or newline
+			if [ $arrM2Tidx -lt ${#arrM2T[@]} ]
+ 			then
+				echo -ne '\t'
+				#reset M1 index each time a hypothetical column of
+				#M2 is processed
+				arrM1idx=$( expr $arrM1idx - $colsM1 )
+				m1curCol=1 #reset m1 column tracker
+			else
+				m1curCol=1 #rest m1 column tracker	
+				echo	
+			fi
+		done
+
+		#reset index of M2T each time a hypothical row of M1 is fully processed
+		arrM2Tidx=0
+		#advance row of M1
+		(( m1curRow++ ))	
+	done		
+}
+
+
+
+
+####################################################################################
+#MAIN
+####################################################################################
+
+
+#Verify the specification of an operation
+if [ -z "$1" ] #executes if no operaion  argument is provided 
+then
+	echo "no operation specified." 1>&2 #redirect output to stderr
+	exit 1
+#Determine which operation to perform
+elif [ $1 = dims ]
+then
+	calcDims  "${@:2}"           #call calcDims
+	
+elif [ $1 = transpose ]
+then
+	matrixTrans "${@:2}"       #call matrixTrans
+	
+elif [ $1 = mean ] 
+then
+	calcMeanVect "${@:2}" 	   #call calcVectMean
+
+elif [ $1 = add ]         
+then		
+	addMatrices "${@:2}"	   #call addMatrices
+	
+elif [ $1 = multiply ]
+then
+	multMatrices "${@:2}" 	   #call multMatrices
+else
+	#bad command provided	
+	echo "bad command." 1>&2 #redirect output to stderr
+	exit 1
+fi
+
+exit 0
